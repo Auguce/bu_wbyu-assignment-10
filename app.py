@@ -30,7 +30,11 @@ def allowed_file(filename):
 
 
 def encode_text_query(text):
-    inputs = clip_processor(text=[text], return_tensors="pt", padding=True)
+    inputs = clip_processor(
+        text=[text],
+        return_tensors="pt",
+        padding=True
+    )
     with torch.no_grad():
         txt_feat = clip_model.get_text_features(**inputs)
     return txt_feat.numpy().flatten()
@@ -38,7 +42,10 @@ def encode_text_query(text):
 
 def encode_image_query(image_path):
     image = Image.open(image_path).convert("RGB")
-    inputs = clip_processor(images=[image], return_tensors="pt")
+    inputs = clip_processor(
+        images=[image],
+        return_tensors="pt"
+    )
     with torch.no_grad():
         img_feat = clip_model.get_image_features(**inputs)
     return img_feat.numpy().flatten()
@@ -58,7 +65,10 @@ def index():
 
 @app.route('/coco_images_resized/<filename>')
 def serve_coco_image(filename):
-    return send_from_directory(COCO_IMAGES_DIR, filename)
+    return send_from_directory(
+        COCO_IMAGES_DIR,
+        filename
+    )
 
 
 @app.route('/search_images', methods=['POST'])
@@ -66,7 +76,8 @@ def search_images():
     raw_use_pca_value = request.form.get('use_pca', 'false')
     query_type = request.form.get('query_type', 'image').strip()
     text_query = request.form.get('text_query', '').strip()
-    weight = float(request.form.get('weight', 0.5))
+    weight_val = request.form.get('weight', '0.5')
+    weight = float(weight_val)
     use_pca = (raw_use_pca_value == 'true')
     pca_k_str = request.form.get('pca_k', '50')
     pca_k = int(pca_k_str)
@@ -90,47 +101,57 @@ def search_images():
         print("Fetching text embedding...")
         text_embedding = encode_text_query(text_query)
 
-    if query_type in ['image', 'hybrid'] and file and allowed_file(file.filename):
-        print("Fetching image embedding...")
-        filename = secure_filename(file.filename)
-        filepath = os.path.join('uploaded', filename)
-        if not os.path.exists('uploaded'):
-            os.makedirs('uploaded')
-        file.save(filepath)
-        image_embedding = encode_image_query(filepath)
+    if query_type in ['image', 'hybrid']:
+        if file and allowed_file(file.filename):
+            print("Fetching image embedding...")
+            filename = secure_filename(file.filename)
+            filepath = os.path.join('uploaded', filename)
+            if not os.path.exists('uploaded'):
+                os.makedirs('uploaded')
+            file.save(filepath)
+            image_embedding = encode_image_query(filepath)
 
     if query_type == 'text':
         use_pca = False
         print("Text-only query. Forced use_pca = False.")
         if text_embedding is None:
             print("No valid text query provided.")
-            return jsonify({"error": "No valid text query provided."}), 400
+            return jsonify({
+                "error": "No valid text query provided."
+            }), 400
         query_embedding = text_embedding
 
     elif query_type == 'image':
         if image_embedding is None:
             print("No valid image query provided.")
-            return jsonify({"error": "No valid image query provided."}), 400
-
+            return jsonify({
+                "error": "No valid image query provided."
+            }), 400
         if use_pca:
             print("Image-only query with PCA.")
             local_pca = PCA(n_components=pca_k)
             local_pca.fit(embeddings)
-            image_pca = local_pca.transform(
-                image_embedding.reshape(1, -1)
-            )
+            img_reshaped = image_embedding.reshape(1, -1)
+            image_pca = local_pca.transform(img_reshaped)
             reduced_embeddings = local_pca.transform(embeddings)
-            image_pca = normalize(image_pca, axis=1)
-            reduced_embeddings = normalize(reduced_embeddings, axis=1)
+            image_pca = normalize(
+                image_pca,
+                axis=1
+            )
+            reduced_embeddings = normalize(
+                reduced_embeddings,
+                axis=1
+            )
             sim_scores = cosine_similarity(
                 image_pca,
                 reduced_embeddings
             ).flatten()
             sim_scores = (sim_scores + 1) / 2
             sim_scores = np.clip(sim_scores, 0, 1)
-
             top_k = 5
-            nearest_indices = np.argsort(sim_scores)[::-1][:top_k]
+            nearest_indices = np.argsort(
+                sim_scores
+            )[::-1][:top_k]
             results = []
             for i in nearest_indices:
                 img_name = image_names[i]
@@ -139,7 +160,9 @@ def search_images():
                     "similarity": float(sim_scores[i])
                 })
             print("Returning PCA-based image search results.")
-            return jsonify({"results": results})
+            return jsonify({
+                "results": results
+            })
         else:
             print("Image-only query without PCA.")
             query_embedding = image_embedding
@@ -147,16 +170,18 @@ def search_images():
     elif query_type == 'hybrid':
         if text_embedding is None or image_embedding is None:
             print("No valid hybrid query provided.")
-            return jsonify({"error": "No valid hybrid query provided."}), 400
-
+            return jsonify({
+                "error": "No valid hybrid query provided."
+            }), 400
         if use_pca:
             print("Hybrid query with PCA.")
             local_pca = PCA(n_components=pca_k)
             local_pca.fit(embeddings)
-            image_pca = local_pca.transform(
-                image_embedding.reshape(1, -1)
+            img_reshaped = image_embedding.reshape(1, -1)
+            image_pca = local_pca.transform(img_reshaped)
+            image_back = local_pca.inverse_transform(
+                image_pca
             )
-            image_back = local_pca.inverse_transform(image_pca)
             query_embedding = combined_embedding(
                 text_embedding,
                 image_back.flatten(),
@@ -172,12 +197,12 @@ def search_images():
 
     else:
         print("Invalid query type.")
-        return jsonify({"error": "Invalid query type"}), 400
+        return jsonify({
+            "error": "Invalid query type"
+        }), 400
 
-    query_embedding = normalize(
-        query_embedding.reshape(1, -1),
-        axis=1
-    )
+    query_reshaped = query_embedding.reshape(1, -1)
+    query_embedding = normalize(query_reshaped, axis=1)
     normalized_embeddings = normalize(embeddings, axis=1)
     sim_scores = cosine_similarity(
         query_embedding,
@@ -185,7 +210,6 @@ def search_images():
     ).flatten()
     sim_scores = (sim_scores + 1) / 2
     sim_scores = np.clip(sim_scores, 0, 1)
-
     top_k = 5
     nearest_indices = np.argsort(sim_scores)[::-1][:top_k]
     results = []
@@ -197,7 +221,9 @@ def search_images():
         })
 
     print("Returning final results.")
-    return jsonify({"results": results})
+    return jsonify({
+        "results": results
+    })
 
 
 def initialize_global_resources():
