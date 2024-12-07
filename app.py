@@ -11,7 +11,6 @@ import pandas as pd
 import torch
 from transformers import CLIPProcessor, CLIPModel
 
-
 app = Flask(__name__)
 
 COCO_IMAGES_DIR = 'coco_images_resized'
@@ -24,7 +23,10 @@ image_names = None
 
 
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    return (
+        '.' in filename and
+        filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    )
 
 
 def encode_text_query(text):
@@ -43,7 +45,10 @@ def encode_image_query(image_path):
 
 
 def combined_embedding(text_embedding, image_embedding, weight):
-    return weight * text_embedding + (1 - weight) * image_embedding
+    return (
+        weight * text_embedding +
+        (1 - weight) * image_embedding
+    )
 
 
 @app.route('/')
@@ -63,7 +68,7 @@ def search_images():
     text_query = request.form.get('text_query', '').strip()
     weight = float(request.form.get('weight', 0.5))
     use_pca = (raw_use_pca_value == 'true')
-    pca_k = int(request.form.get('pca_k', '50'))  # 默认50
+    pca_k = int(request.form.get('pca_k', '50'))  # default is 50
 
     print("===== Debugging Parameters =====")
     print(f"query_type: {query_type}")
@@ -84,7 +89,11 @@ def search_images():
         print("Fetching text embedding...")
         text_embedding = encode_text_query(text_query)
 
-    if query_type in ['image', 'hybrid'] and file and allowed_file(file.filename):
+    if (
+        query_type in ['image', 'hybrid'] and
+        file and
+        allowed_file(file.filename)
+    ):
         print("Fetching image embedding...")
         filename = secure_filename(file.filename)
         filepath = os.path.join('uploaded', filename)
@@ -108,12 +117,15 @@ def search_images():
                 print("Image-only query with PCA.")
                 local_pca = PCA(n_components=pca_k)
                 local_pca.fit(embeddings)
-                image_pca = local_pca.transform(image_embedding.reshape(1, -1))
+                image_pca = local_pca.transform(
+                    image_embedding.reshape(1, -1)
+                )
                 reduced_embeddings = local_pca.transform(embeddings)
                 image_pca = normalize(image_pca, axis=1)
                 reduced_embeddings = normalize(reduced_embeddings, axis=1)
                 sim_scores = cosine_similarity(
-                    image_pca, reduced_embeddings
+                    image_pca,
+                    reduced_embeddings
                 ).flatten()
                 sim_scores = (sim_scores + 1) / 2
                 sim_scores = np.clip(sim_scores, 0, 1)
@@ -145,22 +157,36 @@ def search_images():
             print("Hybrid query with PCA.")
             local_pca = PCA(n_components=pca_k)
             local_pca.fit(embeddings)
-            image_pca = local_pca.transform(image_embedding.reshape(1, -1))
+            image_pca = local_pca.transform(
+                image_embedding.reshape(1, -1)
+            )
             image_back = local_pca.inverse_transform(image_pca)
             query_embedding = combined_embedding(
-                text_embedding, image_back.flatten(), weight
+                text_embedding,
+                image_back.flatten(),
+                weight
             )
         else:
             print("Hybrid query without PCA.")
-            query_embedding = combined_embedding(text_embedding, image_embedding, weight)
+            query_embedding = combined_embedding(
+                text_embedding,
+                image_embedding,
+                weight
+            )
 
     else:
         print("Invalid query type.")
         return jsonify({"error": "Invalid query type"}), 400
 
-    query_embedding = normalize(query_embedding.reshape(1, -1), axis=1)
+    query_embedding = normalize(
+        query_embedding.reshape(1, -1),
+        axis=1
+    )
     normalized_embeddings = normalize(embeddings, axis=1)
-    sim_scores = cosine_similarity(query_embedding, normalized_embeddings).flatten()
+    sim_scores = cosine_similarity(
+        query_embedding,
+        normalized_embeddings
+    ).flatten()
     sim_scores = (sim_scores + 1) / 2
     sim_scores = np.clip(sim_scores, 0, 1)
 
