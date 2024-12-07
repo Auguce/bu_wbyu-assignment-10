@@ -32,16 +32,16 @@ def allowed_file(filename):
 def encode_text_query(text):
     inputs = clip_processor(text=[text], return_tensors="pt", padding=True)
     with torch.no_grad():
-        text_features = clip_model.get_text_features(**inputs)
-    return text_features.numpy().flatten()
+        txt_feat = clip_model.get_text_features(**inputs)
+    return txt_feat.numpy().flatten()
 
 
 def encode_image_query(image_path):
     image = Image.open(image_path).convert("RGB")
     inputs = clip_processor(images=[image], return_tensors="pt")
     with torch.no_grad():
-        image_features = clip_model.get_image_features(**inputs)
-    return image_features.numpy().flatten()
+        img_feat = clip_model.get_image_features(**inputs)
+    return img_feat.numpy().flatten()
 
 
 def combined_embedding(text_embedding, image_embedding, weight):
@@ -68,7 +68,8 @@ def search_images():
     text_query = request.form.get('text_query', '').strip()
     weight = float(request.form.get('weight', 0.5))
     use_pca = (raw_use_pca_value == 'true')
-    pca_k = int(request.form.get('pca_k', '50'))  # default is 50
+    pca_k_str = request.form.get('pca_k', '50')
+    pca_k = int(pca_k_str)
 
     print("===== Debugging Parameters =====")
     print(f"query_type: {query_type}")
@@ -89,11 +90,7 @@ def search_images():
         print("Fetching text embedding...")
         text_embedding = encode_text_query(text_query)
 
-    if (
-        query_type in ['image', 'hybrid'] and
-        file and
-        allowed_file(file.filename)
-    ):
+    if query_type in ['image', 'hybrid'] and file and allowed_file(file.filename):
         print("Fetching image embedding...")
         filename = secure_filename(file.filename)
         filepath = os.path.join('uploaded', filename)
@@ -105,48 +102,47 @@ def search_images():
     if query_type == 'text':
         use_pca = False
         print("Text-only query. Forced use_pca = False.")
-        if text_embedding is not None:
-            query_embedding = text_embedding
-        else:
+        if text_embedding is None:
             print("No valid text query provided.")
             return jsonify({"error": "No valid text query provided."}), 400
+        query_embedding = text_embedding
 
     elif query_type == 'image':
-        if image_embedding is not None:
-            if use_pca:
-                print("Image-only query with PCA.")
-                local_pca = PCA(n_components=pca_k)
-                local_pca.fit(embeddings)
-                image_pca = local_pca.transform(
-                    image_embedding.reshape(1, -1)
-                )
-                reduced_embeddings = local_pca.transform(embeddings)
-                image_pca = normalize(image_pca, axis=1)
-                reduced_embeddings = normalize(reduced_embeddings, axis=1)
-                sim_scores = cosine_similarity(
-                    image_pca,
-                    reduced_embeddings
-                ).flatten()
-                sim_scores = (sim_scores + 1) / 2
-                sim_scores = np.clip(sim_scores, 0, 1)
-
-                top_k = 5
-                nearest_indices = np.argsort(sim_scores)[::-1][:top_k]
-                results = []
-                for i in nearest_indices:
-                    img_name = image_names[i]
-                    results.append({
-                        "image_name": img_name,
-                        "similarity": float(sim_scores[i])
-                    })
-                print("Returning PCA-based image search results.")
-                return jsonify({"results": results})
-            else:
-                print("Image-only query without PCA.")
-                query_embedding = image_embedding
-        else:
+        if image_embedding is None:
             print("No valid image query provided.")
             return jsonify({"error": "No valid image query provided."}), 400
+
+        if use_pca:
+            print("Image-only query with PCA.")
+            local_pca = PCA(n_components=pca_k)
+            local_pca.fit(embeddings)
+            image_pca = local_pca.transform(
+                image_embedding.reshape(1, -1)
+            )
+            reduced_embeddings = local_pca.transform(embeddings)
+            image_pca = normalize(image_pca, axis=1)
+            reduced_embeddings = normalize(reduced_embeddings, axis=1)
+            sim_scores = cosine_similarity(
+                image_pca,
+                reduced_embeddings
+            ).flatten()
+            sim_scores = (sim_scores + 1) / 2
+            sim_scores = np.clip(sim_scores, 0, 1)
+
+            top_k = 5
+            nearest_indices = np.argsort(sim_scores)[::-1][:top_k]
+            results = []
+            for i in nearest_indices:
+                img_name = image_names[i]
+                results.append({
+                    "image_name": img_name,
+                    "similarity": float(sim_scores[i])
+                })
+            print("Returning PCA-based image search results.")
+            return jsonify({"results": results})
+        else:
+            print("Image-only query without PCA.")
+            query_embedding = image_embedding
 
     elif query_type == 'hybrid':
         if text_embedding is None or image_embedding is None:
@@ -217,8 +213,8 @@ def initialize_global_resources():
     if isinstance(image_embeddings, pd.DataFrame):
         print(image_embeddings.head())
         image_names = image_embeddings['file_name'].tolist()
-        embeddings_list = image_embeddings['embedding'].to_list()
-        embeddings = np.array(embeddings_list, dtype=float)
+        emb_list = image_embeddings['embedding'].to_list()
+        embeddings = np.array(emb_list, dtype=float)
     else:
         raise ValueError("Check your pickle file.")
 
