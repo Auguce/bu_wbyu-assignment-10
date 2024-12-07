@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Search</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Image Search</h1>
+
+    <form id="search-form">
+        <!-- Text Query -->
+        <div class="input-group" id="text-query-group">
+            <label for="text_query">Text Query:</label>
+            <input type="text" id="text_query" name="text_query" placeholder="Enter search text...">
+        </div>
+
+        <!-- Image Query -->
+        <div class="input-group" id="image-query-group">
+            <label for="image_query">Image Query:</label>
+            <input type="file" id="image_query" name="image_query" accept="image/*">
+        </div>
+
+        <!-- Query Type -->
+        <div class="input-group">
+            <label for="query_type">Select Query Type:</label>
+            <select id="query_type" name="query_type">
+                <option value="image">Image Only</option>
+                <option value="text">Text Only</option>
+                <option value="hybrid">Hybrid (Image + Text)</option>
+            </select>
+        </div>
+
+        <!-- Hybrid Query Weight -->
+        <div class="input-group" id="weight-group">
+            <label for="weight">Hybrid Query Weight (Text Weight):</label>
+            <input type="number" id="weight" name="weight" value="0.5" step="0.1" min="0.0" max="1.0">
+        </div>
+
+        <!-- PCA Checkbox -->
+        <div class="input-group" id="pca-group">
+            <label for="use_pca">Use PCA Embeddings?</label>
+            <input type="checkbox" id="use_pca" name="use_pca" value="true">
+        </div>
+
+        <!-- PCA k Value -->
+        <div class="input-group" id="pca-k-group">
+            <label for="pca_k">Number of Principal Components (k):</label>
+            <input type="number" id="pca_k" name="pca_k" value="50" min="1" max="512">
+        </div>
+
+        <button type="submit">Search</button>
+    </form>
+
+    <div id="results" style="display: none;">
+        <h2>Top Search Results</h2>
+        <div id="results-container"></div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
