@@ -12,6 +12,7 @@ import ast
 import torch
 from transformers import CLIPProcessor, CLIPModel
 
+
 app = Flask(__name__)
 
 COCO_IMAGES_DIR = 'coco_images_resized'
@@ -22,14 +23,17 @@ clip_processor = None
 embeddings = None
 image_names = None
 
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 def encode_text_query(text):
     inputs = clip_processor(text=[text], return_tensors="pt", padding=True)
     with torch.no_grad():
         text_features = clip_model.get_text_features(**inputs)
     return text_features.numpy().flatten()
+
 
 def encode_image_query(image_path):
     image = Image.open(image_path).convert("RGB")
@@ -38,16 +42,20 @@ def encode_image_query(image_path):
         image_features = clip_model.get_image_features(**inputs)
     return image_features.numpy().flatten()
 
+
 def combined_embedding(text_embedding, image_embedding, weight):
     return weight * text_embedding + (1 - weight) * image_embedding
+
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
+
 @app.route('/coco_images_resized/<filename>')
 def serve_coco_image(filename):
     return send_from_directory(COCO_IMAGES_DIR, filename)
+
 
 @app.route('/search_images', methods=['POST'])
 def search_images():
@@ -99,7 +107,6 @@ def search_images():
         if image_embedding is not None:
             if use_pca:
                 print("Image-only query with PCA.")
-                # 动态根据pca_k重建PCA模型并fit
                 local_pca = PCA(n_components=pca_k)
                 local_pca.fit(embeddings)
                 image_pca = local_pca.transform(image_embedding.reshape(1, -1))
@@ -148,7 +155,6 @@ def search_images():
         print("Invalid query type.")
         return jsonify({"error": "Invalid query type"}), 400
 
-    # 在原始空间搜索
     query_embedding = normalize(query_embedding.reshape(1, -1), axis=1)
     normalized_embeddings = normalize(embeddings, axis=1)
     sim_scores = cosine_similarity(query_embedding, normalized_embeddings).flatten()
@@ -172,43 +178,21 @@ def search_images():
 def initialize_global_resources():
     global clip_model, clip_processor, embeddings, image_names
 
-    # 加载 CLIP 模型
     clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
     clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
-    # 加载 image_embeddings DataFrame
     with open('image_embeddings.pickle', 'rb') as f:
         image_embeddings = pickle.load(f)
 
     print("=== Debugging image_embeddings ===")
     if isinstance(image_embeddings, pd.DataFrame):
-        print("image_embeddings looks like a DataFrame.")
         print(image_embeddings.head())
-        print("DataFrame columns:", image_embeddings.columns)
-        print("DataFrame shape:", image_embeddings.shape)
-
-        first_embedding = image_embeddings.iloc[0]['embedding']
-        if isinstance(first_embedding, str):
-            print("embedding列是字符串格式，需要转换为列表")
-            image_embeddings['embedding'] = image_embeddings['embedding'].apply(ast.literal_eval)
-        else:
-            print("embedding列已经是列表格式。")
-
         image_names = image_embeddings['file_name'].tolist()
         embeddings_list = image_embeddings['embedding'].to_list()
         embeddings = np.array(embeddings_list, dtype=float)
-
-        print("image_names sample:", image_names[:5])
-        print("embeddings shape:", embeddings.shape)
-        print("embeddings sample row (前10个元素):", embeddings[0][:10])
     else:
-        raise ValueError("image_embeddings不是DataFrame格式，请检查你的pickle文件。")
+        raise ValueError("Check your pickle file.")
 
-    print("=================================")
-
-    # 此处不提前fit PCA，因为我们需要根据用户选择的pca_k来动态fit
-    # 默认不fit，查询时若use_pca=true则根据用户指定的k再fit
-    print("PCA will be fit dynamically based on user selected k at query time.")
     print("Initialization done.")
 
 
