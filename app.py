@@ -8,7 +8,6 @@ from werkzeug.utils import secure_filename
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.preprocessing import normalize
 import pandas as pd
-import ast
 import torch
 from transformers import CLIPProcessor, CLIPModel
 
@@ -113,7 +112,9 @@ def search_images():
                 reduced_embeddings = local_pca.transform(embeddings)
                 image_pca = normalize(image_pca, axis=1)
                 reduced_embeddings = normalize(reduced_embeddings, axis=1)
-                sim_scores = cosine_similarity(image_pca, reduced_embeddings).flatten()
+                sim_scores = cosine_similarity(
+                    image_pca, reduced_embeddings
+                ).flatten()
                 sim_scores = (sim_scores + 1) / 2
                 sim_scores = np.clip(sim_scores, 0, 1)
 
@@ -146,7 +147,9 @@ def search_images():
             local_pca.fit(embeddings)
             image_pca = local_pca.transform(image_embedding.reshape(1, -1))
             image_back = local_pca.inverse_transform(image_pca)
-            query_embedding = combined_embedding(text_embedding, image_back.flatten(), weight)
+            query_embedding = combined_embedding(
+                text_embedding, image_back.flatten(), weight
+            )
         else:
             print("Hybrid query without PCA.")
             query_embedding = combined_embedding(text_embedding, image_embedding, weight)
